@@ -184,3 +184,36 @@ curl "https://dadosabertos.camara.leg.br/api/v2/proposicoes/{id}/tramitacoes"
 - CEAP data also available as bulk download: `https://www.camara.leg.br/cotas/Ano-{ano}.json.zip`
 - Full API reference: see `references/api-endpoints.md` for parameter details
 - Swagger UI: `https://dadosabertos.camara.leg.br/swagger/api.html`
+
+---
+
+## Python Client (async)
+
+You can use the async Python client for programmatic access:
+
+```python
+import asyncio
+from camara_client import get_camara_client
+
+async def main():
+    client = get_camara_client()
+    
+    # Listar deputados
+    deps = await client.lista_deputados()
+    
+    # Buscar por nome
+    resultado = await client.buscar_deputado_por_nome("Lula")
+    
+    # Pesquisar proposições
+    props = await client.pesquisar_proposicoes(keywords="transporte", ano=2026)
+    
+    # Eventos de hoje
+    from datetime import date
+    eventos = await client.get_eventos_dia(date.today())
+    
+    await client.close()
+
+asyncio.run(main())
+```
+
+Requires: `pip install httpx`
