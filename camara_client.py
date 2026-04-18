@@ -26,10 +26,42 @@ Uso:
         finally:
             await client.close()
 """
+import asyncio
+import logging
 from datetime import date, timedelta
 from typing import Any
 
 import httpx
+
+
+# Configurar logger
+logger = logging.getLogger(__name__)
+
+
+# Exceções customizadas
+class CamaraAPIError(Exception):
+    """Erro base para erros da API da Câmara."""
+    pass
+
+
+class CamaraConnectionError(CamaraAPIError):
+    """Erro de conexão com a API."""
+    pass
+
+
+class CamaraTimeoutError(CamaraAPIError):
+    """Timeout ao conectar com a API."""
+    pass
+
+
+class CamaraNotFoundError(CamaraAPIError):
+    """Recurso não encontrado."""
+    pass
+
+
+class CamaraValidationError(CamaraAPIError):
+    """Erro de validação de parâmetros."""
+    pass
 
 
 BASE_URL = "https://dadosabertos.camara.leg.br/api/v2"
@@ -56,27 +88,126 @@ class CamaraClient:
         if self.client and not self.client.is_closed:
             await self.client.aclose()
 
-    async def _get(self, path: str, params: dict | None = None) -> dict:
+    async def _get(self, path: str, params: dict | None = None, retries: int = 3) -> dict:
+        """
+        Executa GET com retry logic e tratamento de erros.
+        
+        Args:
+            path: Caminho do endpoint
+            params: Parâmetros da query
+            retries: Número de tentativas em caso de falha
+            
+        Raises:
+            CamaraTimeoutError: Timeout na requisição
+            CamaraNotFoundError: Recurso não encontrado (404)
+            CamaraConnectionError: Erro de conexão
+            CamaraAPIError: Outros erros da API
+        """
         client = await self._get_client()
-        response = await client.get(path, params=params)
-        response.raise_for_status()
-        data = response.json()
-        # API v2 retorna { dados: [...] }
-        return data.get("dados", data)
+        last_error = None
+        
+        for attempt in range(retries):
+            try:
+                logger.debug(f"Requisição para {path}, tentativa {attempt + 1}/{retries}")
+                response = await client.get(path, params=params)
+                response.raise_for_status()
+                data = response.json()
+                # API v2 retorna { dados: [...] }
+                return data.get("dados", data)
+                
+            except httpx.TimeoutException as e:
+                last_error = CamaraTimeoutError(f"Timeout ao acessar {path}: {e}")
+                logger.warning(f"Timeout na tentativa {attempt + 1}/{retries}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)  # Backoff exponencial
+                    
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    raise CamaraNotFoundError(f"Recurso não encontrado: {path}")
+                last_error = CamaraAPIError(f"Erro HTTP {e.response.status_code}: {e}")
+                if e.response.status_code >= 500:
+                    logger.warning(f"Erro {e.response.status_code} na tentativa {attempt + 1}/{retries}")
+                    if attempt < retries - 1:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                logger.error(f"Erro HTTP: {e}")
+                break
+                
+            except httpx.ConnectError as e:
+                last_error = CamaraConnectionError(f"Erro de conexão: {e}")
+                logger.warning(f"Erro de conexão na tentativa {attempt + 1}/{retries}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    
+            except Exception as e:
+                last_error = CamaraAPIError(f"Erro inesperado: {e}")
+                logger.error(f"Erro inesperado: {e}")
+                break
+        
+        if last_error:
+            raise last_error
+        
+        raise CamaraAPIError("Falha após todas as tentativas")
 
-    async def _get_list(self, path: str, params: dict | None = None) -> list:
-        """Retorna lista de resultados com paginação automática."""
+    async def _get_raw(self, path: str, params: dict | None = None, retries: int = 3) -> dict:
+        """GET com retry que retorna o JSON completo (sem extrair 'dados')."""
         client = await self._get_client()
+        last_error = None
+
+        for attempt in range(retries):
+            try:
+                logger.debug(f"Requisição raw para {path}, tentativa {attempt + 1}/{retries}")
+                response = await client.get(path, params=params)
+                response.raise_for_status()
+                return response.json()
+
+            except httpx.TimeoutException as e:
+                last_error = CamaraTimeoutError(f"Timeout ao acessar {path}: {e}")
+                logger.warning(f"Timeout na tentativa {attempt + 1}/{retries}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    raise CamaraNotFoundError(f"Recurso não encontrado: {path}")
+                last_error = CamaraAPIError(f"Erro HTTP {e.response.status_code}: {e}")
+                if e.response.status_code >= 500:
+                    logger.warning(f"Erro {e.response.status_code} na tentativa {attempt + 1}/{retries}")
+                    if attempt < retries - 1:
+                        await asyncio.sleep(2 ** attempt)
+                        continue
+                logger.error(f"Erro HTTP: {e}")
+                break
+
+            except httpx.ConnectError as e:
+                last_error = CamaraConnectionError(f"Erro de conexão: {e}")
+                logger.warning(f"Erro de conexão na tentativa {attempt + 1}/{retries}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+
+            except Exception as e:
+                last_error = CamaraAPIError(f"Erro inesperado: {e}")
+                logger.error(f"Erro inesperado: {e}")
+                break
+
+        if last_error:
+            raise last_error
+        raise CamaraAPIError("Falha após todas as tentativas")
+
+    async def _get_list(self, path: str, params: dict | None = None, max_pages: int = 50) -> list:
+        """Retorna lista de resultados com paginação automática e retry.
+
+        Args:
+            max_pages: limite de páginas para evitar loops infinitos (default 50).
+        """
         params = params or {}
         params.setdefault("itens", 100)
-        
+
         results = []
         pagina = 1
-        while True:
+        while pagina <= max_pages:
             params["pagina"] = pagina
-            response = await client.get(path, params=params)
-            response.raise_for_status()
-            data = response.json()
+            data = await self._get_raw(path, params)
             dados = data.get("dados", [])
             if not dados:
                 break
@@ -88,35 +219,37 @@ class CamaraClient:
 
     # ========== DEPUTADOS ==========
 
-    async def lista_deputados(self, legislatura: int = 57) -> list[dict]:
-        """Lista de deputados da legislatura atual."""
-        return await self._get_list("/deputados", {"idLegislatura": str(legislatura)})
+    async def lista_deputados(self, legislatura: int | None = None) -> list[dict]:
+        """Lista de deputados. Default: legislatura atual (57ª, 2023-2027)."""
+        params: dict[str, Any] = {}
+        if legislatura is not None:
+            params["idLegislatura"] = str(legislatura)
+        return await self._get_list("/deputados", params)
 
-    async def buscar_deputado_por_nome(self, nome: str, legislatura: int = 57) -> list[dict]:
+    async def buscar_deputado_por_nome(self, nome: str, legislatura: int | None = None) -> list[dict]:
         """Busca deputados pelo nome (contém)."""
-        return await self._get_list("/deputados", {
-            "nome": nome,
-            "idLegislatura": str(legislatura),
-            "itens": 10
-        })
+        params: dict[str, Any] = {"nome": nome, "itens": 10}
+        if legislatura is not None:
+            params["idLegislatura"] = str(legislatura)
+        return await self._get_list("/deputados", params)
 
     async def get_deputado_detalhe(self, id_deputado: str | int) -> dict:
         """Detalhe de um deputado pelo ID."""
         return await self._get(f"/deputados/{id_deputado}")
 
     async def get_despesas_deputado(self, id_deputado: str | int, ano: int | None = None) -> list[dict]:
-        """Despesas de um deputados (CEAP)."""
+        """Despesas de um deputado (CEAP)."""
         params: dict[str, Any] = {"ordem": "ASC", "ordenarPor": "ano"}
         if ano:
             params["ano"] = str(ano)
         return await self._get_list(f"/deputados/{id_deputado}/despesas", params)
 
     async def get_frentes_deputado(self, id_deputado: str | int) -> list[dict]:
-        """Frentes parliamentares que o deputados participa."""
+        """Frentes parlamentares que o deputado participa."""
         return await self._get_list(f"/deputados/{id_deputado}/frentes")
 
     async def get_discursos_deputado(self, id_deputado: str | int, data_inicio: date | None = None, data_fim: date | None = None) -> list[dict]:
-        """Discursos de um deputados."""
+        """Discursos de um deputado."""
         params = {}
         if data_inicio:
             params["dataIni"] = data_inicio.isoformat()
@@ -140,7 +273,7 @@ class CamaraClient:
         numero: str | None = None,
         ano: int | None = None,
         autor: str | None = None,
-        tramitando: bool = True
+        tramitando: bool = False
     ) -> list[dict]:
         """Pesquisa proposições."""
         params: dict[str, Any] = {
@@ -159,7 +292,8 @@ class CamaraClient:
         if autor:
             params["autor"] = autor
         if tramitando:
-            params["situacao"] = "TRAMITANDO"
+            # Código 903 = "Aguardando Deliberação" (em tramitação)
+            params["codSituacao"] = "903"
 
         return await self._get_list("/proposicoes", params)
 
@@ -257,7 +391,7 @@ class CamaraClient:
         return await self._get_list("/legislaturas")
 
     async def get_legislatura_detalhe(self, id_legislatura: str | int) -> dict:
-        """Detalhe de uma legislature."""
+        """Detalhe de uma legislatura."""
         return await self._get(f"/legislaturas/{id_legislatura}")
 
     # ========== PARTIDOS ==========
@@ -266,17 +400,46 @@ class CamaraClient:
         """Lista de partidos."""
         return await self._get_list("/partidos")
 
+    # ========== NOVOS ENDPOINTS ==========
+
+    async def get_orientacoes_votacao(self, id_votacao: str | int) -> list[dict]:
+        """Orientações dos partidos em uma votação."""
+        return await self._get_list(f"/votacoes/{id_votacao}/orientacoes")
+
+    async def get_membros_orgao(self, id_orgao: str | int) -> list[dict]:
+        """Membros de um órgão/comissão."""
+        return await self._get_list(f"/orgaos/{id_orgao}/membros")
+
+    async def get_pauta_evento(self, id_evento: str | int) -> list[dict]:
+        """Pauta de um evento (sessão/audiência)."""
+        return await self._get_list(f"/eventos/{id_evento}/pauta")
+
+    async def get_orgao_membros_periodo(self, id_orgao: str | int, data_inicio: date, data_fim: date) -> list[dict]:
+        """Membros de uma comissão em um período."""
+        return await self._get_list(f"/orgaos/{id_orgao}/membros", {
+            "dataInicio": data_inicio.isoformat(),
+            "dataFim": data_fim.isoformat()
+        })
+
+    async def get_deputado_orgaos(self, id_deputado: str | int) -> list[dict]:
+        """Órgãos/comissões em que o deputado participa."""
+        return await self._get_list(f"/deputados/{id_deputado}/orgaos")
+
     # ========== UTILITÁRIOS ==========
 
     async def get_proposicoes_recentes(self, dias: int = 7) -> list[dict]:
         """Busca proposições apresentadas nos últimos N dias."""
         hoje = date.today()
         inicio = hoje - timedelta(days=dias)
-        
-        return await self.pesquisar_proposicoes(
-            keywords=None,
-            tramitando=True
-        )
+
+        params: dict[str, Any] = {
+            "dataApresentacaoInicio": inicio.isoformat(),
+            "dataApresentacaoFim": hoje.isoformat(),
+            "ordem": "DESC",
+            "ordenarPor": "id",
+            "itens": 50,
+        }
+        return await self._get_list("/proposicoes", params)
 
     async def get_votacoes_semana(self) -> list[dict]:
         """Votações da última semana."""
