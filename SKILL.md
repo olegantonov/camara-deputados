@@ -187,6 +187,18 @@ curl "https://dadosabertos.camara.leg.br/api/v2/proposicoes/{id}/tramitacoes"
 
 ---
 
+## API Quirks & Tips
+
+- **Standard response wrapper**: All endpoints return `{dados: [...], links: [...]}`. The Python client's `_get()` automatically extracts `dados`.
+- **Pagination**: Use `itens` (page size, max 100) and `pagina` (page number). The Python client's `_get_list()` auto-paginates — if `dados` has fewer items than `itens`, it's the last page.
+- **Date format**: Always ISO format `YYYY-MM-DD` (unlike Senado which uses `YYYYMMDD`).
+- **Legislature 57**: Current legislature (2023-2027). Most endpoints default to current if not specified.
+- **Plenário ID**: orgão id = 180 for plenary hall.
+- **tramitacaoSenado**: Use `?tramitacaoSenado=true` on proposições endpoint to find bills currently being reviewed by the Senate.
+- **CEAP bulk data**: Deputy expenses also available as bulk download at `https://www.camara.leg.br/cotas/Ano-{ano}.json.zip`.
+
+---
+
 ## Python Client (async)
 
 You can use the async Python client for programmatic access:
@@ -215,5 +227,83 @@ async def main():
 
 asyncio.run(main())
 ```
+
+### Available Methods
+
+**Deputados:**
+- `lista_deputados(legislatura)` — List deputies
+- `buscar_deputado_por_nome(nome, legislatura)` — Search by name
+- `get_deputado_detalhe(id)` — Full profile
+- `get_despesas_deputado(id, ano)` — CEAP expenses
+- `get_frentes_deputado(id)` — Parliamentary fronts
+- `get_discursos_deputado(id, data_inicio, data_fim)` — Speeches
+- `get_presenca_deputado(id, data_inicio, data_fim)` — Attendance
+- `get_deputado_orgaos(id)` — Committee memberships
+- `get_deputado_ocupacoes(id)` — Professional history
+
+**Proposições:**
+- `pesquisar_proposicoes(keywords, sigla_tipo, numero, ano, autor, tramitando, tema, tramitacao_senado)` — Search bills
+- `get_proposicao_detalhe(id)` — Full detail
+- `get_proposicao_tramitacao(id)` — Status history
+- `get_proposicao_votacoes(id)` — Votes on bill
+- `get_proposicao_autores(id)` — Authors
+- `get_proposicao_temas(id)` — Topics/tags
+- `get_proposicao_relacionadas(id)` — Related bills
+
+**Eventos:**
+- `get_eventos_dia(data)` — Day agenda
+- `get_eventos_periodo(data_inicio, data_fim)` — Events in period
+- `get_evento_detalhe(id)` — Event detail
+- `get_evento_deputados(id)` — Deputies in event
+- `get_evento_orgaos(id)` — Organizing bodies
+- `get_evento_votacoes(id)` — Votes in event
+
+**Votações:**
+- `get_votacoes_periodo(data_inicio, data_fim, id_orgao)` — Votes in period
+- `get_votacao_detalhe(id)` — Vote detail
+- `get_votos_votacao(id)` — Individual votes
+- `get_orientacoes_votacao(id)` — Party orientations
+
+**Órgãos/Comissões:**
+- `lista_orgaos()` — List committees
+- `get_orgao_detalhe(id)` — Committee detail
+- `get_eventos_orgao_periodo(id, data_inicio, data_fim)` — Committee agenda
+- `get_membros_orgao(id)` — Current members
+- `get_orgao_membros_periodo(id, data_inicio, data_fim)` — Members in period
+- `get_votacoes_orgao(id, data_inicio, data_fim)` — Committee votes
+
+**Legislaturas:**
+- `lista_legislaturas()` — List legislatures
+- `get_legislatura_detalhe(id)` — Legislature detail
+- `get_legislatura_mesa(id)` — Presiding board
+
+**Partidos:**
+- `lista_partidos()` — List parties
+- `get_partido_detalhe(id)` — Party detail
+- `get_partido_membros(id)` — Party members
+
+**Blocos:**
+- `lista_blocos()` — List parliamentary blocs
+- `get_bloco_detalhe(id)` — Bloc detail
+
+**Frentes:**
+- `lista_frentes(id_legislatura)` — List parliamentary fronts
+- `get_frente_detalhe(id)` — Front detail
+- `get_frente_membros(id)` — Front members
+
+**Referências:**
+- `get_referencias_situacao_deputado()` — Deputy status codes
+- `get_referencias_situacao_proposicao()` — Bill status codes
+- `get_referencias_tipo_proposicao()` — Bill type codes (PL, PEC, etc)
+- `get_referencias_temas()` — Topic/theme list
+- `get_referencias_tipos_evento()` — Event types
+- `get_referencias_tipos_orgao()` — Committee types
+- `get_referencias_uf()` — Brazilian states
+
+**Utilitários:**
+- `get_proposicoes_recentes(dias)` — Recent bills
+- `get_votacoes_semana()` — This week's votes
+- `get_eventos_semana()` — This week's events
+- `get_pauta_evento(id)` — Event agenda items
 
 Requires: `pip install httpx`

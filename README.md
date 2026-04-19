@@ -153,29 +153,66 @@ for tram in tramitacoes:
 - `get_despesas_deputado(id, ano)` - CEAP/despesas
 - `get_discursos_deputado(id)` - Discursos
 - `get_frentes_deputado(id)` - Frentes parlamentares
+- `get_deputado_orgaos(id)` - Comissões do deputado
+- `get_deputado_ocupacoes(id)` - Histórico profissional
 
 ### Proposições
-- `pesquisar_proposicoes(keywords, tipo, ano)` - Busca de bills
+- `pesquisar_proposicoes(keywords, tipo, ano, tema, tramitacao_senado)` - Busca de bills
 - `get_proposicao_detalhe(id)` - Detalhes completos
 - `get_proposicao_tramitacao(id)` - Histórico de tramitação
 - `get_proposicao_votacoes(id)` - Votações da proposição
 - `get_proposicao_autores(id)` - Autores
 - `get_proposicao_temas(id)` - Temas/tags
+- `get_proposicao_relacionadas(id)` - Proposições relacionadas
 
 ### Eventos
 - `get_eventos_dia(data)` - Agenda do dia
 - `get_eventos_periodo(inicio, fim)` - Eventos em período
 - `get_evento_detalhe(id)` - Detalhes do evento
+- `get_evento_deputados(id)` - Deputados no evento
+- `get_evento_orgaos(id)` - Órgãos organizadores
+- `get_evento_votacoes(id)` - Votações do evento
 
 ### Votações
 - `get_votacoes_periodo(inicio, fim, orgao)` - Votações em período
 - `get_votacao_detalhe(id)` - Detalhes da votação
 - `get_votos_votacao(id)` - Votos individuais por deputado
+- `get_orientacoes_votacao(id)` - Orientações de bancada
 
 ### Órgãos/Comissões
 - `lista_orgaos()` - Lista de comissões e órgãos
 - `get_orgao_detalhe(id)` - Detalhes do órgão
 - `get_eventos_orgao_periodo(id, inicio, fim)` - Agenda da comissão
+- `get_membros_orgao(id)` - Membros atuais
+- `get_votacoes_orgao(id, inicio, fim)` - Votações da comissão
+
+### Legislaturas
+- `lista_legislaturas()` - Lista de legislaturas
+- `get_legislatura_detalhe(id)` - Detalhes da legislatura
+- `get_legislatura_mesa(id)` - Mesa diretora
+
+### Partidos
+- `lista_partidos()` - Lista de partidos
+- `get_partido_detalhe(id)` - Detalhes do partido
+- `get_partido_membros(id)` - Deputados do partido
+
+### Blocos Parlamentares
+- `lista_blocos()` - Lista de blocos
+- `get_bloco_detalhe(id)` - Detalhes do bloco
+
+### Frentes Parlamentares
+- `lista_frentes(legislatura)` - Lista de frentes
+- `get_frente_detalhe(id)` - Detalhes da frente
+- `get_frente_membros(id)` - Membros da frente
+
+### Referências
+- `get_referencias_situacao_deputado()` - Códigos de situação
+- `get_referencias_situacao_proposicao()` - Status de proposições
+- `get_referencias_tipo_proposicao()` - Tipos (PL, PEC, etc)
+- `get_referencias_temas()` - Temas/assuntos
+- `get_referencias_tipos_evento()` - Tipos de evento
+- `get_referencias_tipos_orgao()` - Tipos de órgão
+- `get_referencias_uf()` - Unidades federativas
 
 ## ⚠️ Tratamento de Erros
 
@@ -280,6 +317,58 @@ async def monitor_votacoes():
         await client.close()
 
 asyncio.run(monitor_votacoes())
+```
+
+### Blocos e Frentes Parlamentares
+
+```python
+# Listar blocos parlamentares
+blocos = await client.lista_blocos()
+for bloco in blocos:
+    print(f"{bloco['id']}: {bloco['nome']}")
+
+# Frentes parlamentares da legislatura atual
+frentes = await client.lista_frentes(id_legislatura=57)
+for frente in frentes[:10]:
+    print(f"{frente['titulo']}")
+
+# Membros de uma frente
+membros = await client.get_frente_membros(frente['id'])
+for m in membros:
+    print(f"  {m['nome']} ({m.get('titulo', 'membro')})")
+```
+
+### Mesa Diretora
+
+```python
+# Mesa da legislatura atual
+mesa = await client.get_legislatura_mesa(57)
+for membro in mesa:
+    print(f"{membro['titulo']}: {membro['nome']} ({membro['siglaPartido']}-{membro['siglaUf']})")
+```
+
+### Dados de Referência
+
+```python
+# Listar todos os temas disponíveis para filtro
+temas = await client.get_referencias_temas()
+for tema in temas:
+    print(f"  {tema['cod']}: {tema['nome']}")
+
+# Listar UFs
+ufs = await client.get_referencias_uf()
+```
+
+### Proposições em Tramitação no Senado
+
+```python
+# Buscar projetos originados na Câmara que estão no Senado
+no_senado = await client.pesquisar_proposicoes(
+    sigla_tipo="PL",
+    tramitacao_senado=True
+)
+for prop in no_senado:
+    print(f"PL {prop['numero']}/{prop['ano']}: {prop['ementa'][:60]}")
 ```
 
 ## 📄 Licença

@@ -273,7 +273,9 @@ class CamaraClient:
         numero: str | None = None,
         ano: int | None = None,
         autor: str | None = None,
-        tramitando: bool = False
+        tramitando: bool = False,
+        tema: int | None = None,
+        tramitacao_senado: bool = False,
     ) -> list[dict]:
         """Pesquisa proposições."""
         params: dict[str, Any] = {
@@ -294,6 +296,10 @@ class CamaraClient:
         if tramitando:
             # Código 903 = "Aguardando Deliberação" (em tramitação)
             params["codSituacao"] = "903"
+        if tema:
+            params["tema"] = str(tema)
+        if tramitacao_senado:
+            params["tramitacaoSenado"] = "true"
 
         return await self._get_list("/proposicoes", params)
 
@@ -316,6 +322,10 @@ class CamaraClient:
     async def get_proposicao_temas(self, id_proposicao: str | int) -> list[dict]:
         """Temas de uma proposição."""
         return await self._get_list(f"/proposicoes/{id_proposicao}/temas")
+
+    async def get_proposicao_relacionadas(self, id_proposicao: str | int) -> list[dict]:
+        """Proposicoes relacionadas a uma proposicao."""
+        return await self._get_list(f"/proposicoes/{id_proposicao}/relacionadas")
 
     # ========== EVENTOS / SESSÕES ==========
 
@@ -342,6 +352,18 @@ class CamaraClient:
     async def get_evento_detalhe(self, id_evento: str | int) -> dict:
         """Detalhe de um evento."""
         return await self._get(f"/eventos/{id_evento}")
+
+    async def get_evento_deputados(self, id_evento: str | int) -> list[dict]:
+        """Deputados presentes em um evento."""
+        return await self._get_list(f"/eventos/{id_evento}/deputados")
+
+    async def get_evento_orgaos(self, id_evento: str | int) -> list[dict]:
+        """Orgaos organizadores de um evento."""
+        return await self._get_list(f"/eventos/{id_evento}/orgaos")
+
+    async def get_evento_votacoes(self, id_evento: str | int) -> list[dict]:
+        """Votacoes realizadas em um evento."""
+        return await self._get_list(f"/eventos/{id_evento}/votacoes")
 
     # ========== VOTAÇÕES ==========
 
@@ -394,11 +416,50 @@ class CamaraClient:
         """Detalhe de uma legislatura."""
         return await self._get(f"/legislaturas/{id_legislatura}")
 
+    async def get_legislatura_mesa(self, id_legislatura: str | int) -> list[dict]:
+        """Mesa diretora de uma legislatura."""
+        return await self._get_list(f"/legislaturas/{id_legislatura}/mesa")
+
     # ========== PARTIDOS ==========
 
     async def lista_partidos(self) -> list[dict]:
         """Lista de partidos."""
         return await self._get_list("/partidos")
+
+    async def get_partido_detalhe(self, id_partido: str | int) -> dict:
+        """Detalhes de um partido."""
+        return await self._get(f"/partidos/{id_partido}")
+
+    async def get_partido_membros(self, id_partido: str | int) -> list[dict]:
+        """Membros de um partido (deputados)."""
+        return await self._get_list(f"/partidos/{id_partido}/membros")
+
+    # ========== BLOCOS ==========
+
+    async def lista_blocos(self) -> list[dict]:
+        """Lista de blocos parlamentares."""
+        return await self._get_list("/blocos")
+
+    async def get_bloco_detalhe(self, id_bloco: str | int) -> dict:
+        """Detalhes de um bloco parlamentar."""
+        return await self._get(f"/blocos/{id_bloco}")
+
+    # ========== FRENTES ==========
+
+    async def lista_frentes(self, id_legislatura: int | None = None) -> list[dict]:
+        """Lista de frentes parlamentares."""
+        params: dict[str, Any] = {}
+        if id_legislatura:
+            params["idLegislatura"] = str(id_legislatura)
+        return await self._get_list("/frentes", params)
+
+    async def get_frente_detalhe(self, id_frente: str | int) -> dict:
+        """Detalhes de uma frente parlamentar."""
+        return await self._get(f"/frentes/{id_frente}")
+
+    async def get_frente_membros(self, id_frente: str | int) -> list[dict]:
+        """Membros de uma frente parlamentar."""
+        return await self._get_list(f"/frentes/{id_frente}/membros")
 
     # ========== NOVOS ENDPOINTS ==========
 
@@ -424,6 +485,49 @@ class CamaraClient:
     async def get_deputado_orgaos(self, id_deputado: str | int) -> list[dict]:
         """Órgãos/comissões em que o deputado participa."""
         return await self._get_list(f"/deputados/{id_deputado}/orgaos")
+
+    async def get_deputado_ocupacoes(self, id_deputado: str | int) -> list[dict]:
+        """Historico de ocupacoes/profissoes de um deputado."""
+        return await self._get_list(f"/deputados/{id_deputado}/ocupacoes")
+
+    async def get_votacoes_orgao(self, id_orgao: str | int, data_inicio: date | None = None, data_fim: date | None = None) -> list[dict]:
+        """Votacoes de um orgao/comissao."""
+        params: dict[str, Any] = {}
+        if data_inicio:
+            params["dataInicio"] = data_inicio.isoformat()
+        if data_fim:
+            params["dataFim"] = data_fim.isoformat()
+        return await self._get_list(f"/orgaos/{id_orgao}/votacoes", params)
+
+    # ========== REFERÊNCIAS ==========
+
+    async def get_referencias_situacao_deputado(self) -> list[dict]:
+        """Codigos de situacao de deputados."""
+        return await self._get_list("/referencias/deputados/codSituacao")
+
+    async def get_referencias_situacao_proposicao(self) -> list[dict]:
+        """Codigos de situacao de proposicoes."""
+        return await self._get_list("/referencias/proposicoes/codSituacaoProposicao")
+
+    async def get_referencias_tipo_proposicao(self) -> list[dict]:
+        """Siglas de tipo de proposicao (PL, PEC, etc)."""
+        return await self._get_list("/referencias/proposicoes/siglaTipo")
+
+    async def get_referencias_temas(self) -> list[dict]:
+        """Lista de temas/assuntos."""
+        return await self._get_list("/referencias/proposicoes/tema")
+
+    async def get_referencias_tipos_evento(self) -> list[dict]:
+        """Tipos de evento."""
+        return await self._get_list("/referencias/tiposEvento")
+
+    async def get_referencias_tipos_orgao(self) -> list[dict]:
+        """Tipos de orgao."""
+        return await self._get_list("/referencias/tiposOrgao")
+
+    async def get_referencias_uf(self) -> list[dict]:
+        """Lista de UFs."""
+        return await self._get_list("/referencias/uf")
 
     # ========== UTILITÁRIOS ==========
 
