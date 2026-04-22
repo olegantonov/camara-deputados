@@ -3,6 +3,8 @@ name: Publish to ClawhHub
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - '.github/**'
 
 jobs:
   publish:
@@ -20,5 +22,18 @@ jobs:
       - name: Authenticate
         run: clawhub login --token ${{ secrets.CLAWHUB_TOKEN }} --no-browser
 
+      - name: Resolve next version
+        id: version
+        run: |
+          CURRENT=$(clawhub inspect camara-deputados 2>/dev/null | grep "Latest:" | awk '{print $2}' || echo "1.0.0")
+          if [ -z "$CURRENT" ] || [ "$CURRENT" = "Latest:" ]; then CURRENT="1.0.0"; fi
+          MAJOR=$(echo $CURRENT | cut -d. -f1)
+          MINOR=$(echo $CURRENT | cut -d. -f2)
+          PATCH=$(echo $CURRENT | cut -d. -f3)
+          NEXT="$MAJOR.$MINOR.$((PATCH + 1))"
+          echo "next=$NEXT" >> $GITHUB_OUTPUT
+          echo "Next version: $NEXT"
+
       - name: Publish skill
-        run: clawhub publish . --slug camara-deputados --name "Câmara dos Deputados" --no-input
+        run: |
+          clawhub publish . --slug camara-deputados --name "Câmara dos Deputados" --version ${{ steps.version.outputs.next }} --no-input
