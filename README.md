@@ -385,9 +385,9 @@ Contribuições são bem-vindas! Por favor:
 4. Push para a branch (`git push origin feature/AmazingFeature`)
 5. Abra um Pull Request
 
-## 👨‍💻 Autor
+## 👨💻 Autor
 
-Oleg Antonov - [@olegantonov](https://github.com/olegantonov)
+Daniel Marques - [@olegantonov](https://github.com/olegantonov)
 
 ## 🙏 Agradecimentos
 
