@@ -17,8 +17,8 @@ jobs:
       - name: Install ClawhHub CLI
         run: npm install -g clawhub
 
+      - name: Authenticate
+        run: clawhub login --token ${{ secrets.CLAWHUB_TOKEN }} --no-browser
+
       - name: Publish skill
-        env:
-          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
-        run: |
-          clawhub publish . --slug camara-deputados --name "Câmara dos Deputados" --no-input
+        run: clawhub publish . --slug camara-deputados --name "Câmara dos Deputados" --no-input
